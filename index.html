@@ -525,7 +525,6 @@
       todayCount = 0;
       store.set('pc_count', 0);
       store.set('pc_date', today);
-      // Streak logic
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       if (savedDate === yesterday) {
         streakDays = store.get('pc_streak', 0);
@@ -553,90 +552,107 @@
     document.getElementById('countVal').textContent = todayCount;
   }
 
-  // Audio: synthesized energetic chime using Web Audio API
-  function initAudio() {
+  // Initialize audio context - call on first user interaction
+  function getAudioContext() {
     if (!audioCtx) {
-      try { 
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        console.log('AudioContext created:', audioCtx.state);
       } catch(e) {
-        console.error('Failed to create audio context:', e);
+        console.error('Failed to create AudioContext:', e);
+        return null;
       }
     }
     return audioCtx;
   }
 
-  async function ensureAudioContext() {
-    const ctx = initAudio();
+  // Resume audio context if suspended
+  async function resumeAudioContext() {
+    const ctx = getAudioContext();
     if (!ctx) return false;
     
-    // Resume audio context if suspended (required for user interaction)
-    if (ctx.state === 'suspended') {
-      try {
+    try {
+      if (ctx.state === 'suspended') {
+        console.log('Resuming suspended AudioContext...');
         await ctx.resume();
-      } catch(e) {
-        console.error('Failed to resume audio context:', e);
-        return false;
+        console.log('AudioContext resumed:', ctx.state);
       }
+      return true;
+    } catch(e) {
+      console.error('Failed to resume AudioContext:', e);
+      return false;
     }
-    return true;
   }
 
   function playChime() {
-    if (!audioCtx) return;
+    const ctx = getAudioContext();
+    if (!ctx) {
+      console.warn('No AudioContext available for playback');
+      return;
+    }
 
     try {
-      const t = audioCtx.currentTime;
+      const now = ctx.currentTime;
+      
+      // Create master gain for overall control
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0.3;
+      masterGain.connect(ctx.destination);
 
-      // Three-note ascending chime: C5, E5, G5
-      const notes = [523.25, 659.25, 783.99];
-      const offsets = [0, 0.12, 0.24];
+      // Three-note chime: C5, E5, G5
+      const notes = [
+        { freq: 523.25, time: 0 },
+        { freq: 659.25, time: 0.12 },
+        { freq: 783.99, time: 0.24 }
+      ];
 
-      notes.forEach((freq, i) => {
-        const osc = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        const osc2 = audioCtx.createOscillator();
-        const gain2 = audioCtx.createGain();
+      notes.forEach(note => {
+        // Main tone (sine wave)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(note.freq, now + note.time);
+        gain1.gain.setValueAtTime(0, now + note.time);
+        gain1.gain.linearRampToValueAtTime(0.4, now + note.time + 0.05);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + note.time + 0.6);
+        
+        osc1.connect(gain1);
+        gain1.connect(masterGain);
+        osc1.start(now + note.time);
+        osc1.stop(now + note.time + 0.7);
 
-        // Main tone (sine) + soft harmonic (triangle)
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, t + offsets[i]);
-
+        // Harmonic (triangle wave at 2x frequency)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
         osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(freq * 2, t + offsets[i]);
-
-        // Soft attack, smooth decay
-        gainNode.gain.setValueAtTime(0, t + offsets[i]);
-        gainNode.gain.linearRampToValueAtTime(0.28, t + offsets[i] + 0.04);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, t + offsets[i] + 0.7);
-
-        gain2.gain.setValueAtTime(0, t + offsets[i]);
-        gain2.gain.linearRampToValueAtTime(0.08, t + offsets[i] + 0.04);
-        gain2.gain.exponentialRampToValueAtTime(0.001, t + offsets[i] + 0.5);
-
-        osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        osc2.frequency.setValueAtTime(note.freq * 2, now + note.time);
+        gain2.gain.setValueAtTime(0, now + note.time);
+        gain2.gain.linearRampToValueAtTime(0.15, now + note.time + 0.05);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + note.time + 0.5);
+        
         osc2.connect(gain2);
-        gain2.connect(audioCtx.destination);
-
-        osc.start(t + offsets[i]);
-        osc.stop(t + offsets[i] + 0.8);
-        osc2.start(t + offsets[i]);
-        osc2.stop(t + offsets[i] + 0.6);
+        gain2.connect(masterGain);
+        osc2.start(now + note.time);
+        osc2.stop(now + note.time + 0.6);
       });
 
-      // Final warm ding
-      const bell = audioCtx.createOscillator();
-      const bellGain = audioCtx.createGain();
+      // Final bell tone
+      const bell = ctx.createOscillator();
+      const bellGain = ctx.createGain();
       bell.type = 'sine';
-      bell.frequency.setValueAtTime(1046.5, t + 0.52);
-      bell.frequency.exponentialRampToValueAtTime(980, t + 0.52 + 0.3);
-      bellGain.gain.setValueAtTime(0, t + 0.52);
-      bellGain.gain.linearRampToValueAtTime(0.18, t + 0.52 + 0.04);
-      bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.52 + 1.1);
+      bell.frequency.setValueAtTime(1046.5, now + 0.48);
+      bell.frequency.exponentialRampToValueAtTime(920, now + 0.78);
+      bellGain.gain.setValueAtTime(0, now + 0.48);
+      bellGain.gain.linearRampToValueAtTime(0.25, now + 0.53);
+      bellGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+      
       bell.connect(bellGain);
-      bellGain.connect(audioCtx.destination);
-      bell.start(t + 0.52);
-      bell.stop(t + 0.52 + 1.2);
+      bellGain.connect(masterGain);
+      bell.start(now + 0.48);
+      bell.stop(now + 1.0);
+
+      console.log('Chime played successfully');
     } catch(e) {
       console.error('Error playing chime:', e);
     }
@@ -764,12 +780,9 @@
   }
 
   async function handleToggle() {
-    // Initialize and resume audio context on user interaction
-    const audioReady = await ensureAudioContext();
-    if (!audioReady) {
-      console.warn('Audio context could not be initialized');
-    }
-
+    // Resume audio on user interaction (required by browsers)
+    await resumeAudioContext();
+    
     isOn = !isOn;
     updateUI();
 
