@@ -1,0 +1,35 @@
+{
+  "name": "Posture Check",
+  "short_name": "Posture Check",
+  "description": "Gentle posture reminders every 20–40 minutes. No account needed. Works offline.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0f1a",
+  "theme_color": "#1a1a2e",
+  "categories": ["health", "lifestyle", "utilities"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Start reminders",
+      "short_name": "Start",
+      "description": "Open and start posture reminders",
+      "url": "/?action=start"
+    }
+  ]
+}
